@@ -1,0 +1,12 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Runtime data
+uploads/
+milvus/
+repository_images/
+
+# OS
+.DS_Store
