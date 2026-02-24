@@ -31,8 +31,8 @@ device = "cpu"
 # ---------------- CONFIG ----------------
 
 REPO_DIR = "repository_images"
-COLLECTION_NAME = "smart_weight_control_v15"
-MILVUS_DB_FILE = "./milvus/milvus_smart_v15.db"
+COLLECTION_NAME = "smart_weight_control_v16"
+MILVUS_DB_FILE = "./milvus/milvus_smart_v16.db"
 
 TOP_K_MILVUS_RANKING = 50
 
@@ -329,4 +329,4 @@ def ensure_collection():
         },
     )
 
-    print("📦 Milvus collection created (v15 with DINO + VGG fields).")
+    print("📦 Milvus collection created (v1 with DINO + VGG fields).")
