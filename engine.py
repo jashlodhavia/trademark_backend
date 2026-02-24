@@ -31,8 +31,8 @@ device = "cpu"
 # ---------------- CONFIG ----------------
 
 REPO_DIR = "repository_images"
-COLLECTION_NAME = "smart_weight_control_v14"
-MILVUS_DB_FILE = "./milvus/milvus_smart_v14.db"
+COLLECTION_NAME = "smart_weight_control_v15"
+MILVUS_DB_FILE = "./milvus/milvus_smart_v15.db"
 
 TOP_K_MILVUS_RANKING = 50
 
@@ -270,16 +270,19 @@ def get_embeddings(image_paths):
 #               MILVUS COLLECTION
 # =====================================================
 
+DINO_DIM = 768
+VGG_DIM = 4096
+FUSED_DIM = DINO_DIM + VGG_DIM
+
+
 def ensure_collection():
     """
-    Create collection if not exists
+    Create collection if not exists.
+    Stores fused embedding (for search), plus separate DINO & VGG
+    vectors and OCR JSON so images are never needed at query time.
     """
     if utility.has_collection(COLLECTION_NAME):
         return
-
-    # Infer embedding dim
-    dummy = np.zeros((1, 768 + 4096))
-    dim = dummy.shape[1]
 
     fields = [
         FieldSchema(
@@ -291,7 +294,17 @@ def ensure_collection():
         FieldSchema(
             name="embedding",
             dtype=DataType.FLOAT_VECTOR,
-            dim=dim,
+            dim=FUSED_DIM,
+        ),
+        FieldSchema(
+            name="dino_embedding",
+            dtype=DataType.FLOAT_VECTOR,
+            dim=DINO_DIM,
+        ),
+        FieldSchema(
+            name="vgg_embedding",
+            dtype=DataType.FLOAT_VECTOR,
+            dim=VGG_DIM,
         ),
         FieldSchema(
             name="filename",
@@ -316,4 +329,4 @@ def ensure_collection():
         },
     )
 
-    print("📦 Milvus collection created.")
+    print("📦 Milvus collection created (v15 with DINO + VGG fields).")

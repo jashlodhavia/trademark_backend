@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,7 +18,6 @@ from engine import (
     VGG_FINAL_WEIGHT,
     TEXT_FINAL_WEIGHT,
     COLLECTION_NAME,
-    REPO_DIR,
 )
 
 # ---------------- APP CONFIG ----------------
@@ -59,7 +59,8 @@ def health_check():
 @app.post("/submit-logo")
 async def submit_logo(file: UploadFile = File(...)):
     """
-    Submit a new logo to be stored & indexed
+    Submit a new logo to be stored & indexed.
+    Stores fused, DINO, and VGG embeddings + OCR in Milvus.
     """
     if not file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
         raise HTTPException(status_code=400, detail="Invalid image format")
@@ -74,17 +75,19 @@ async def submit_logo(file: UploadFile = File(...)):
     # OCR
     words, conf, ocr_json = get_ocr_data(save_path)
 
-    # Embeddings
-    vecs, names, _, _ = get_embeddings([save_path])
-    if not vecs:
+    # Embeddings (fused + individual DINO & VGG)
+    fused, names, dino_vecs, vgg_vecs = get_embeddings([save_path])
+    if not fused:
         raise HTTPException(status_code=500, detail="Embedding generation failed")
 
-    # Insert into Milvus
+    # Insert into Milvus (field order must match schema)
     col = Collection(COLLECTION_NAME)
     col.insert([
-        vecs,
-        [os.path.basename(save_path)],
-        [ocr_json],
+        fused,                              # embedding  (fused)
+        [dino_vecs[0].tolist()],            # dino_embedding
+        [vgg_vecs[0].tolist()],             # vgg_embedding
+        [os.path.basename(save_path)],      # filename
+        [ocr_json],                         # ocr_json
     ])
     col.flush()
 
@@ -101,7 +104,8 @@ async def submit_logo(file: UploadFile = File(...)):
 @app.post("/similarity-check")
 async def similarity_check(file: UploadFile = File(...)):
     """
-    Run similarity search and return top 20 matches
+    Run similarity search and return top 20 matches.
+    All scoring data is read from Milvus — no image folder needed.
     """
     try:
         if not file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
@@ -111,7 +115,6 @@ async def similarity_check(file: UploadFile = File(...)):
             UPLOAD_DIR, f"query_{uuid.uuid4()}_{file.filename}"
         )
 
-        print("Line 113")
         with open(temp_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
@@ -129,32 +132,30 @@ async def similarity_check(file: UploadFile = File(...)):
         col = Collection(COLLECTION_NAME)
         col.load()
 
-        print("Line 131")
-
+        # Search by fused vector and retrieve stored DINO/VGG vectors + OCR
         hits = col.search(
             q_vec,
             "embedding",
             {"metric_type": "L2"},
             limit=20,
-            output_fields=["filename", "ocr_json"],
+            output_fields=[
+                "filename",
+                "ocr_json",
+                "dino_embedding",
+                "vgg_embedding",
+            ],
         )
 
-        print("hits\n\n", len(hits))
         results = []
 
         for h in hits[0]:
             filename = h.entity.get("filename")
             ocr_json = h.entity.get("ocr_json")
+            r_dino = np.array(h.entity.get("dino_embedding"))
+            r_vgg = np.array(h.entity.get("vgg_embedding"))
 
-            repo_path = os.path.join(REPO_DIR, filename)
-            if not os.path.exists(repo_path):
-                continue
-
-            # Compute similarities
-            _, _, r_dino, r_vgg = get_embeddings([repo_path])
-
-            dino_s = cosine_sim(q_dino, r_dino[0])
-            vgg_s = cosine_sim(q_vgg, r_vgg[0])
+            dino_s = cosine_sim(q_dino, r_dino)
+            vgg_s = cosine_sim(q_vgg, r_vgg)
             text_s = calculate_text_score(q_words, ocr_json)
 
             final_score = (
@@ -173,8 +174,10 @@ async def similarity_check(file: UploadFile = File(...)):
 
         results.sort(key=lambda x: x["final_score"], reverse=True)
 
-        print("Line 174")
-        
+        # Clean up temp query file
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
         return {
             "query_ocr": q_words,
             "top_k": len(results),
