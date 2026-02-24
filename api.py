@@ -103,73 +103,83 @@ async def similarity_check(file: UploadFile = File(...)):
     """
     Run similarity search and return top 20 matches
     """
-    if not file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
-        raise HTTPException(status_code=400, detail="Invalid image format")
+    try:
+        if not file.filename.lower().endswith((".png", ".jpg", ".jpeg")):
+            raise HTTPException(status_code=400, detail="Invalid image format")
 
-    temp_path = os.path.join(
-        UPLOAD_DIR, f"query_{uuid.uuid4()}_{file.filename}"
-    )
+        temp_path = os.path.join(
+            UPLOAD_DIR, f"query_{uuid.uuid4()}_{file.filename}"
+        )
 
-    with open(temp_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        print("Line 113")
+        with open(temp_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
 
-    # OCR query
-    q_words, _, _ = get_ocr_data(temp_path)
+        # OCR query
+        q_words, _, _ = get_ocr_data(temp_path)
 
-    # Query embeddings
-    q_vec, _, q_dino, q_vgg = get_embeddings([temp_path])
-    if not q_vec:
-        raise HTTPException(status_code=500, detail="Query embedding failed")
+        # Query embeddings
+        q_vec, _, q_dino, q_vgg = get_embeddings([temp_path])
+        if not q_vec:
+            raise HTTPException(status_code=500, detail="Query embedding failed")
 
-    q_dino = q_dino[0]
-    q_vgg = q_vgg[0]
+        q_dino = q_dino[0]
+        q_vgg = q_vgg[0]
 
-    col = Collection(COLLECTION_NAME)
-    col.load()
+        col = Collection(COLLECTION_NAME)
+        col.load()
 
-    hits = col.search(
-        q_vec,
-        "embedding",
-        {"metric_type": "L2"},
-        limit=20,
-        output_fields=["filename", "ocr_json"],
-    )
+        print("Line 131")
 
-    results = []
+        hits = col.search(
+            q_vec,
+            "embedding",
+            {"metric_type": "L2"},
+            limit=20,
+            output_fields=["filename", "ocr_json"],
+        )
 
-    for h in hits[0]:
-        filename = h.entity.get("filename")
-        ocr_json = h.entity.get("ocr_json")
+        print("hits\n\n", len(hits))
+        results = []
 
-        repo_path = os.path.join(REPO_DIR, filename)
-        if not os.path.exists(repo_path):
-            continue
+        for h in hits[0]:
+            filename = h.entity.get("filename")
+            ocr_json = h.entity.get("ocr_json")
 
-        # Compute similarities
-        _, _, r_dino, r_vgg = get_embeddings([repo_path])
+            repo_path = os.path.join(REPO_DIR, filename)
+            if not os.path.exists(repo_path):
+                continue
 
-        dino_s = cosine_sim(q_dino, r_dino[0])
-        vgg_s = cosine_sim(q_vgg, r_vgg[0])
-        text_s = calculate_text_score(q_words, ocr_json)
+            # Compute similarities
+            _, _, r_dino, r_vgg = get_embeddings([repo_path])
 
-        final_score = (
-            dino_s * DINO_FINAL_WEIGHT
-            + vgg_s * VGG_FINAL_WEIGHT
-            + text_s * TEXT_FINAL_WEIGHT
-        ) * 100
+            dino_s = cosine_sim(q_dino, r_dino[0])
+            vgg_s = cosine_sim(q_vgg, r_vgg[0])
+            text_s = calculate_text_score(q_words, ocr_json)
 
-        results.append({
-            "filename": filename,
-            "final_score": round(final_score, 2),
-            "dino_score": round(dino_s, 3),
-            "vgg_score": round(vgg_s, 3),
-            "text_score": round(text_s, 3),
-        })
+            final_score = (
+                dino_s * DINO_FINAL_WEIGHT
+                + vgg_s * VGG_FINAL_WEIGHT
+                + text_s * TEXT_FINAL_WEIGHT
+            ) * 100
 
-    results.sort(key=lambda x: x["final_score"], reverse=True)
+            results.append({
+                "filename": filename,
+                "final_score": round(final_score, 2),
+                "dino_score": round(dino_s, 3),
+                "vgg_score": round(vgg_s, 3),
+                "text_score": round(text_s, 3),
+            })
 
-    return {
-        "query_ocr": q_words,
-        "top_k": len(results),
-        "results": results,
-    }
+        results.sort(key=lambda x: x["final_score"], reverse=True)
+
+        print("Line 174")
+        
+        return {
+            "query_ocr": q_words,
+            "top_k": len(results),
+            "results": results,
+        }
+    except Exception as e:
+        print("Error in similarity check:", e)
+        raise HTTPException(status_code=500, detail=str(e))
