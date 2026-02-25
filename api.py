@@ -87,13 +87,8 @@ def health_check():
 # ── TTA (test-time augmentation) ─────────────────────────────────────────
 
 def _tta_variants(img: Image.Image) -> list[Image.Image]:
-    """Generate 8 rotation/flip variants for visual robustness."""
-    variants = []
-    for angle in [0, 90, 180, 270]:
-        r = img.rotate(angle, expand=True)
-        variants.append(r)
-        variants.append(r.transpose(Image.FLIP_LEFT_RIGHT))
-    return variants
+    """Generate 4 rotation variants for visual robustness."""
+    return [img.rotate(angle, expand=True) for angle in [0, 90, 180, 270]]
 
 
 # ── submit logo ───────────────────────────────────────────────────────────

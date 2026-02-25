@@ -55,8 +55,13 @@ def preprocess_image(image: Image.Image, target_size: int = 224) -> Image.Image:
       raw image → background removal → tight crop → square pad → resize
     """
     fg = extract_foreground(image)
-    w, h = fg.size
+    return pad_and_resize(fg, target_size)
+
+
+def pad_and_resize(image: Image.Image, target_size: int = 224) -> Image.Image:
+    """Square-pad and resize only (no background removal). Fast."""
+    w, h = image.size
     size = max(w, h)
     padded = Image.new("RGB", (size, size), GRAY_FILL)
-    padded.paste(fg, ((size - w) // 2, (size - h) // 2))
+    padded.paste(image, ((size - w) // 2, (size - h) // 2))
     return padded.resize((target_size, target_size), Image.LANCZOS)

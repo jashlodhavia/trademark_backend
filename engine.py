@@ -26,7 +26,7 @@ from pymilvus import (
     utility,
 )
 
-from preprocessing import preprocess_image
+from preprocessing import preprocess_image, pad_and_resize
 from text_engine import (
     initialize_text_engines,
     get_ocr_data,
@@ -234,14 +234,6 @@ def extract_all_features(image_path: str) -> dict | None:
     # ── preprocessing ──
     fg_img = preprocess_image(raw_img)
 
-    # ── visual embeddings ──
-    dino_vecs, vgg_vecs = get_visual_embeddings([fg_img])
-    if dino_vecs.shape[0] == 0:
-        return None
-
-    dino_vec = dino_vecs[0]
-    vgg_vec = vgg_vecs[0]
-
     # ── OCR (on raw image, not preprocessed) ──
     words, mean_conf, ocr_json, raw_ocr = get_ocr_data(image_path)
     has_text = len(words) > 0
@@ -257,6 +249,19 @@ def extract_all_features(image_path: str) -> dict | None:
             ocr_json = _json.dumps(records, ensure_ascii=False)
         except Exception:
             ocr_json = ocr_json[:OCR_JSON_MAX]
+
+    # ── icon image (text regions masked to gray, no rembg needed) ──
+    icon_img = split_icon_text(raw_img, raw_ocr)
+    icon_prepared = pad_and_resize(icon_img)
+
+    # ── visual embeddings (batch main + icon in single forward pass) ──
+    dino_vecs, vgg_vecs = get_visual_embeddings([fg_img, icon_prepared])
+    if dino_vecs.shape[0] < 2:
+        return None
+
+    dino_vec = dino_vecs[0]
+    vgg_vec = vgg_vecs[0]
+    icon_emb = dino_vecs[1]
 
     # ── English representation for embedding + ocr_text_raw ──
     english_words = extract_english_words(ocr_json)
@@ -274,12 +279,6 @@ def extract_all_features(image_path: str) -> dict | None:
 
     # ── shape ──
     hu_moments, shape_hist = extract_shape_features(fg_img)
-
-    # ── icon embedding (text regions masked out) ──
-    icon_img = split_icon_text(raw_img, raw_ocr)
-    icon_preprocessed = preprocess_image(icon_img)
-    icon_dino_vecs, _ = get_visual_embeddings([icon_preprocessed])
-    icon_emb = icon_dino_vecs[0] if icon_dino_vecs.shape[0] > 0 else np.zeros(DINO_DIM, dtype=np.float32)
 
     # ── perceptual hash ──
     phash_hex = compute_phash(raw_img)

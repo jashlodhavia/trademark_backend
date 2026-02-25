@@ -176,7 +176,7 @@ def _detect_src_lang(text: str) -> str:
 # =====================================================
 
 def _ocr_image_variants(image_path: str) -> list[str]:
-    """Generate contrast-enhanced, binarized, and inverted variants."""
+    """Generate a CLAHE contrast-enhanced variant for better OCR."""
     img = cv2.imread(image_path)
     if img is None:
         return [image_path]
@@ -188,17 +188,6 @@ def _ocr_image_variants(image_path: str) -> list[str]:
     p1 = tempfile.mktemp(suffix=".png")
     cv2.imwrite(p1, enhanced)
     paths.append(p1)
-
-    _, binary = cv2.threshold(
-        gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-    )
-    p2 = tempfile.mktemp(suffix=".png")
-    cv2.imwrite(p2, binary)
-    paths.append(p2)
-
-    p3 = tempfile.mktemp(suffix=".png")
-    cv2.imwrite(p3, cv2.bitwise_not(binary))
-    paths.append(p3)
 
     return paths
 
