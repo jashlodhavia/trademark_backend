@@ -1,17 +1,25 @@
 """
 index_repo.py
 ─────────────
-Indexes every image in REPO_DIR into Milvus.
+Indexes every image in REPO_DIR into Milvus (v3 schema).
 
-For each image the following are stored:
-  • fused embedding  (DINO + VGG, used for vector search)
-  • dino_embedding   (768‑dim, used for final scoring)
-  • vgg_embedding    (4096‑dim, used for final scoring)
-  • filename         (basename of the image)
-  • ocr_json         (OCR word list with confidences)
+For each image the following are extracted and stored:
+  • dino_embedding     (768-dim,  attention-weighted, on foreground)
+  • vgg_embedding      (4096-dim, on foreground)
+  • text_embedding     (384-dim,  multilingual sentence-transformer)
+  • font_embedding     (768-dim,  DINOv2 on cropped text regions)
+  • color_histogram    (48-dim,   CIELAB histogram)
+  • shape_histogram    (64-dim,   contour angle histogram)
+  • hu_moments         (7-dim,    log-scale Hu Moments)
+  • icon_embedding     (768-dim,  DINO on icon-only region)
+  • color_palette_json (JSON,     dominant colors for EMD re-ranking)
+  • ocr_json           (JSON,     per-word OCR with confidence)
+  • ocr_text_raw       (string,   concatenated raw OCR text)
+  • phash_hex          (string,   perceptual hash hex)
+  • has_text           (bool)
+  • filename
 
-After this script finishes, the repository_images folder is
-**no longer needed** at query time.
+After indexing, the repository_images folder is **not needed** at query time.
 """
 
 import os
@@ -20,9 +28,8 @@ import glob
 
 from engine import (
     initialize_engines,
-    get_embeddings,
-    get_ocr_data,
     ensure_collection,
+    extract_all_features,
     REPO_DIR,
     COLLECTION_NAME,
 )
@@ -30,82 +37,108 @@ from engine import (
 from pymilvus import Collection
 
 
-BATCH_SIZE = 50  # images per Milvus insert batch
+BATCH_SIZE = 50
+
+
+def _get_existing_filenames(col: Collection) -> set[str]:
+    """Query Milvus for all filenames already indexed."""
+    try:
+        col.load()
+        results = col.query(expr="id >= 0", output_fields=["filename"])
+        return {r["filename"] for r in results}
+    except Exception:
+        return set()
 
 
 def index_all_images():
-    """Walk REPO_DIR, compute embeddings + OCR, insert into Milvus."""
-
-    # ── 1. Initialize models & Milvus connection ──
     initialize_engines()
     ensure_collection()
 
     col = Collection(COLLECTION_NAME)
 
-    # ── 2. Gather image paths ──
     extensions = ("*.png", "*.jpg", "*.jpeg", "*.PNG", "*.JPG", "*.JPEG")
     image_paths = []
     for ext in extensions:
         image_paths.extend(glob.glob(os.path.join(REPO_DIR, ext)))
-
     image_paths = sorted(set(image_paths))
 
     if not image_paths:
         print(f"❌ No images found in '{REPO_DIR}'. Nothing to index.")
         sys.exit(1)
 
-    print(f"📂 Found {len(image_paths)} images in '{REPO_DIR}'")
+    existing = _get_existing_filenames(col)
+    if existing:
+        before = len(image_paths)
+        image_paths = [p for p in image_paths if os.path.basename(p) not in existing]
+        print(f"📂 Found {before} images, {len(existing)} already indexed, {len(image_paths)} remaining")
+    else:
+        print(f"📂 Found {len(image_paths)} images in '{REPO_DIR}'")
 
-    # ── 3. Process in batches ──
+    if not image_paths:
+        print("✅ All images already indexed. Nothing to do.")
+        return
+
     total_indexed = 0
 
     for i in range(0, len(image_paths), BATCH_SIZE):
         batch_paths = image_paths[i : i + BATCH_SIZE]
 
-        fused_vecs = []
-        dino_vecs = []
-        vgg_vecs = []
-        filenames = []
-        ocr_jsons = []
+        rows = {
+            "dino_embedding": [],
+            "vgg_embedding": [],
+            "text_embedding": [],
+            "font_embedding": [],
+            "color_histogram": [],
+            "shape_histogram": [],
+            "hu_moments": [],
+            "icon_embedding": [],
+            "color_palette_json": [],
+            "filename": [],
+            "ocr_json": [],
+            "ocr_text_raw": [],
+            "phash_hex": [],
+            "has_text": [],
+        }
 
         for path in batch_paths:
-            # Embeddings
-            fused, names, dino, vgg = get_embeddings([path])
-            if not fused:
-                print(f"  ⚠️  Skipping {os.path.basename(path)} (embedding failed)")
+            feats = extract_all_features(path)
+            if feats is None:
+                print(f"  ⚠️  Skipping {os.path.basename(path)}")
                 continue
 
-            # OCR
-            _, _, ocr_json = get_ocr_data(path)
+            feats.pop("_fg_img", None)
 
-            fused_vecs.append(fused[0])
-            dino_vecs.append(dino[0].tolist())
-            vgg_vecs.append(vgg[0].tolist())
-            filenames.append(os.path.basename(path))
-            ocr_jsons.append(ocr_json)
+            for key in rows:
+                rows[key].append(feats[key])
 
-        if not fused_vecs:
+        if not rows["filename"]:
             continue
 
-        # Insert into Milvus (field order must match schema)
         col.insert([
-            fused_vecs,       # embedding  (fused)
-            dino_vecs,        # dino_embedding
-            vgg_vecs,         # vgg_embedding
-            filenames,        # filename
-            ocr_jsons,        # ocr_json
+            rows["dino_embedding"],
+            rows["vgg_embedding"],
+            rows["text_embedding"],
+            rows["font_embedding"],
+            rows["color_histogram"],
+            rows["shape_histogram"],
+            rows["hu_moments"],
+            rows["icon_embedding"],
+            rows["color_palette_json"],
+            rows["filename"],
+            rows["ocr_json"],
+            rows["ocr_text_raw"],
+            rows["phash_hex"],
+            rows["has_text"],
         ])
 
-        total_indexed += len(fused_vecs)
+        total_indexed += len(rows["filename"])
         print(
             f"  ✅ Indexed batch {i // BATCH_SIZE + 1} "
             f"({total_indexed}/{len(image_paths)} images)"
         )
 
-    # ── 4. Flush & report ──
     col.flush()
-    print(f"\n🎉 Done! {total_indexed} images indexed into collection '{COLLECTION_NAME}'.")
-    print("   You can now remove the repository_images folder from the deployment.")
+    print(f"\n🎉 Done! {total_indexed} images indexed into '{COLLECTION_NAME}'.")
 
 
 if __name__ == "__main__":
