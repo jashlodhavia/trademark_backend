@@ -223,19 +223,25 @@ def extract_all_features(image_path: str) -> dict | None:
       preprocessing → visual embeddings → OCR → text embedding →
       font embedding → color histogram + palette → shape → icon → phash
 
+    Rembg and OCR run concurrently since they are independent.
+
     Returns a dict with all fields needed for Milvus insertion, or
     None if the image cannot be processed.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     try:
         raw_img = Image.open(image_path).convert("RGB")
     except Exception:
         return None
 
-    # ── preprocessing ──
-    fg_img = preprocess_image(raw_img)
+    # ── Run rembg and OCR concurrently (independent, both CPU-heavy) ──
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fg_future = pool.submit(preprocess_image, raw_img)
+        ocr_future = pool.submit(get_ocr_data, image_path)
 
-    # ── OCR (on raw image, not preprocessed) ──
-    words, mean_conf, ocr_json, raw_ocr = get_ocr_data(image_path)
+    fg_img = fg_future.result()
+    words, mean_conf, ocr_json, raw_ocr = ocr_future.result()
     has_text = len(words) > 0
 
     # ── Truncate OCR JSON if it exceeds Milvus VARCHAR limit ──

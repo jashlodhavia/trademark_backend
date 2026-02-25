@@ -15,6 +15,7 @@ import uuid
 import shutil
 import numpy as np
 import imagehash
+from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,7 +25,6 @@ from engine import (
     initialize_engines,
     extract_all_features,
     get_visual_embeddings,
-    cosine_sim,
     COLLECTION_NAME,
 )
 from preprocessing import preprocess_image
@@ -69,6 +69,17 @@ ALL_OUTPUT_FIELDS = [
     "icon_embedding", "phash_hex",
 ]
 
+_milvus_col: Collection | None = None
+
+
+def _get_collection() -> Collection:
+    """Return a cached Milvus collection handle (avoids re-load per request)."""
+    global _milvus_col
+    if _milvus_col is None:
+        _milvus_col = Collection(COLLECTION_NAME)
+        _milvus_col.load()
+    return _milvus_col
+
 
 # ── startup ───────────────────────────────────────────────────────────────
 
@@ -87,8 +98,33 @@ def health_check():
 # ── TTA (test-time augmentation) ─────────────────────────────────────────
 
 def _tta_variants(img: Image.Image) -> list[Image.Image]:
-    """Generate 4 rotation variants for visual robustness."""
-    return [img.rotate(angle, expand=True) for angle in [0, 90, 180, 270]]
+    """Generate 2 rotation variants (0° and 180°) for visual robustness."""
+    return [img, img.rotate(180, expand=True)]
+
+
+# ── vectorized cosine similarity helpers ─────────────────────────────────
+
+def _norm_rows(m: np.ndarray) -> np.ndarray:
+    """L2-normalize each row of a 2-D array in-place."""
+    norms = np.linalg.norm(m, axis=1, keepdims=True)
+    norms = np.where(norms < 1e-10, 1.0, norms)
+    m /= norms
+    return m
+
+
+def _batch_cosine(query_vecs: np.ndarray, candidate_mat: np.ndarray) -> np.ndarray:
+    """
+    Vectorized cosine similarity.
+
+    query_vecs:    (Q, D) — e.g. TTA variants
+    candidate_mat: (N, D) — all candidates stacked
+
+    Returns (N,) — max similarity across Q query vectors for each candidate.
+    """
+    q = _norm_rows(query_vecs.astype(np.float64))
+    c = _norm_rows(candidate_mat.astype(np.float64))
+    sims = q @ c.T  # (Q, N)
+    return sims.max(axis=0)
 
 
 # ── submit logo ───────────────────────────────────────────────────────────
@@ -110,7 +146,7 @@ async def submit_logo(file: UploadFile = File(...)):
 
     feats.pop("_fg_img", None)
 
-    col = Collection(COLLECTION_NAME)
+    col = _get_collection()
     col.insert([[feats[k]] for k in [
         "dino_embedding", "vgg_embedding", "text_embedding",
         "font_embedding", "color_histogram",
@@ -171,46 +207,57 @@ async def similarity_check(file: UploadFile = File(...)):
             tta_imgs = _tta_variants(fg_img)
             tta_dino_vecs, tta_vgg_vecs = get_visual_embeddings(tta_imgs)
 
-        col = Collection(COLLECTION_NAME)
-        col.load()
+        col = _get_collection()
 
-        # ── Stage 1: multi-index candidate generation ──
-        candidate_ids: set[int] = set()
+        # ── Stage 1: multi-index candidate generation (parallel) ──
         id_to_entity: dict[int, dict] = {}
 
         def _collect(hits):
             for h in hits[0]:
                 cid = h.id
                 if cid not in id_to_entity:
-                    candidate_ids.add(cid)
                     id_to_entity[cid] = {
                         f: h.entity.get(f) for f in ALL_OUTPUT_FIELDS
                     }
 
-        dino_hits = col.search(
-            [q_dino.tolist()], "dino_embedding", IP_PARAMS,
-            limit=CANDIDATE_LIMIT_VISUAL, output_fields=ALL_OUTPUT_FIELDS,
-        )
-        _collect(dino_hits)
+        def _search_dino():
+            return col.search(
+                [q_dino.tolist()], "dino_embedding", IP_PARAMS,
+                limit=CANDIDATE_LIMIT_VISUAL, output_fields=ALL_OUTPUT_FIELDS,
+            )
 
-        vgg_hits = col.search(
-            [q_vgg.tolist()], "vgg_embedding", IP_PARAMS,
-            limit=CANDIDATE_LIMIT_VISUAL, output_fields=ALL_OUTPUT_FIELDS,
-        )
-        _collect(vgg_hits)
+        def _search_vgg():
+            return col.search(
+                [q_vgg.tolist()], "vgg_embedding", IP_PARAMS,
+                limit=CANDIDATE_LIMIT_VISUAL, output_fields=ALL_OUTPUT_FIELDS,
+            )
 
-        if q_has_text:
-            text_hits = col.search(
+        def _search_text():
+            if not q_has_text:
+                return None
+            return col.search(
                 [q_text_emb.tolist()], "text_embedding", IP_PARAMS,
                 limit=CANDIDATE_LIMIT_TEXT, output_fields=ALL_OUTPUT_FIELDS,
             )
-            _collect(text_hits)
 
-        color_hits = col.search(
-            [q_color_hist.tolist()], "color_histogram", IP_PARAMS,
-            limit=CANDIDATE_LIMIT_COLOR, output_fields=ALL_OUTPUT_FIELDS,
-        )
-        _collect(color_hits)
+        def _search_color():
+            return col.search(
+                [q_color_hist.tolist()], "color_histogram", IP_PARAMS,
+                limit=CANDIDATE_LIMIT_COLOR, output_fields=ALL_OUTPUT_FIELDS,
+            )
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            f_dino = pool.submit(_search_dino)
+            f_vgg = pool.submit(_search_vgg)
+            f_text = pool.submit(_search_text)
+            f_color = pool.submit(_search_color)
+
+        _collect(f_dino.result())
+        _collect(f_vgg.result())
+        text_result = f_text.result()
+        if text_result is not None:
+            _collect(text_result)
+        _collect(f_color.result())
 
         # ── Batch precompute word embeddings ──
         clear_word_cache()
@@ -232,6 +279,28 @@ async def similarity_check(file: UploadFile = File(...)):
                 pass
         batch_precompute_embeddings(all_words)
 
+        # ── Build candidate matrices for vectorized scoring ──
+        c_dino_mat = np.zeros((n, len(q_dino)))
+        c_vgg_mat = np.zeros((n, len(q_vgg)))
+        c_icon_mat = np.zeros((n, len(q_icon_emb)))
+        c_font_mat = np.zeros((n, len(q_font_emb)))
+        c_hu_mat = np.zeros((n, len(q_hu)))
+        filenames = []
+        has_text_flags = []
+
+        for j, cid in enumerate(ids):
+            ent = id_to_entity[cid]
+            filenames.append(ent["filename"])
+            has_text_flags.append(ent["has_text"])
+            c_dino_mat[j] = ent["dino_embedding"]
+            c_vgg_mat[j] = ent["vgg_embedding"]
+            if ent.get("icon_embedding") is not None:
+                c_icon_mat[j] = ent["icon_embedding"]
+            if ent.get("font_embedding") is not None:
+                c_font_mat[j] = ent["font_embedding"]
+            if ent.get("hu_moments") is not None:
+                c_hu_mat[j] = ent["hu_moments"]
+
         # ── pHash pre-filter ──
         phash_boost = np.zeros(n)
         try:
@@ -246,59 +315,43 @@ async def similarity_check(file: UploadFile = File(...)):
         except Exception:
             pass
 
-        # ── Stage 2: compute per-modality scores ──
-        dino_scores = np.zeros(n)
-        vgg_scores = np.zeros(n)
-        text_scores = np.zeros(n)
-        color_scores = np.zeros(n)
-        font_scores = np.zeros(n)
-        shape_scores = np.zeros(n)
-        filenames = []
-        has_text_flags = []
+        # ── Stage 2: vectorized per-modality scores ──
 
+        # DINO + VGG via TTA (matrix multiply instead of per-candidate loop)
+        if tta_dino_vecs is not None and tta_vgg_vecs is not None:
+            dino_scores = _batch_cosine(tta_dino_vecs, c_dino_mat)
+            vgg_scores = _batch_cosine(tta_vgg_vecs, c_vgg_mat)
+        else:
+            dino_scores = _batch_cosine(q_dino.reshape(1, -1), c_dino_mat)
+            vgg_scores = _batch_cosine(q_vgg.reshape(1, -1), c_vgg_mat)
+
+        # Icon embedding boost (vectorized)
+        icon_sims = _batch_cosine(q_icon_emb.reshape(1, -1), c_icon_mat)
+        dino_scores = np.maximum(dino_scores, icon_sims)
+
+        # Font similarity (vectorized)
+        font_scores = _batch_cosine(q_font_emb.reshape(1, -1), c_font_mat)
+        no_font_mask = ~(np.array(has_text_flags, dtype=bool) & q_has_text)
+        font_scores[no_font_mask] = 0.0
+
+        # Shape similarity (vectorized)
+        shape_scores = _batch_cosine(q_hu.reshape(1, -1), c_hu_mat)
+
+        # Text scoring (skip candidates with no text when query has text)
+        text_scores = np.zeros(n)
         for j, cid in enumerate(ids):
             ent = id_to_entity[cid]
-            filenames.append(ent["filename"])
-            c_has_text = ent["has_text"]
-            has_text_flags.append(c_has_text)
+            if not q_words and not ent["has_text"]:
+                continue
+            text_scores[j] = calculate_text_score(q_words, ent["ocr_json"])
 
-            r_dino = np.array(ent["dino_embedding"])
-            r_vgg = np.array(ent["vgg_embedding"])
-
-            # TTA: max similarity across 8 rotated/flipped variants
-            if tta_dino_vecs is not None and tta_vgg_vecs is not None:
-                dino_scores[j] = max(
-                    cosine_sim(v, r_dino) for v in tta_dino_vecs
-                )
-                vgg_scores[j] = max(
-                    cosine_sim(v, r_vgg) for v in tta_vgg_vecs
-                )
-            else:
-                dino_scores[j] = cosine_sim(q_dino, r_dino)
-                vgg_scores[j] = cosine_sim(q_vgg, r_vgg)
-
-            # Icon embedding boost
-            r_icon = ent.get("icon_embedding")
-            if r_icon is not None:
-                icon_sim = cosine_sim(q_icon_emb, np.array(r_icon))
-                dino_scores[j] = max(dino_scores[j], icon_sim)
-
-            text_scores[j] = calculate_text_score(
-                q_words, ent["ocr_json"]
-            )
-
+        # Color scoring
+        color_scores = np.zeros(n)
+        for j, cid in enumerate(ids):
+            ent = id_to_entity[cid]
             color_scores[j] = color_similarity_emd(
                 q_palette_json, ent["color_palette_json"]
             )
-
-            if q_has_text and c_has_text:
-                r_font = np.array(ent["font_embedding"])
-                font_scores[j] = cosine_sim(q_font_emb, r_font)
-
-            # Shape similarity
-            r_hu = ent.get("hu_moments")
-            if r_hu is not None:
-                shape_scores[j] = shape_similarity(q_hu, np.array(r_hu))
 
         # ── Stage 3: fusion + re-ranking ──
         candidates = CandidateScores(
