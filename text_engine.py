@@ -446,6 +446,25 @@ def _phonetic_sim(a: str, b: str) -> float:
     return 0.0
 
 
+def _phonetic_boost(a: str, b: str, edit_sim: float) -> float:
+    """
+    Phonetic-aware score anchored to edit distance.
+
+    A raw phonetic match (Metaphone/Soundex) on short words is too
+    coarse — e.g. "taste"/"dost" both map to Metaphone TST. Instead of
+    returning 1.0 outright, we add a small bounded bonus on top of the
+    actual edit-distance similarity, so the result stays grounded in
+    real string closeness and phonetic has low overall weight.
+    """
+    if edit_sim < 0.3:
+        return 0.0
+    raw = _phonetic_sim(a, b)
+    if raw <= 0.0:
+        return 0.0
+    bonus = 0.15 if raw >= 1.0 else 0.10
+    return min(edit_sim + bonus, 1.0)
+
+
 # =====================================================
 #           HYBRID TEXT SIMILARITY
 # =====================================================
@@ -456,36 +475,38 @@ def _word_sim(q: str, r: str) -> float:
     edit distance, and phonetic matching.
 
     same-script  → max(alpha * edit_sim + (1-alpha) * semantic_sim, phonetic)
-    cross-script → max(combined, semantic_sim, phonetic)
+    cross-script → max(edit_sim_latin, phonetic)
+
+    Semantic embeddings are NOT used for cross-script comparisons because
+    the multilingual sentence-transformer produces unreliable (inflated)
+    similarity scores for short individual words across different scripts.
+    Cross-language matching is handled via transliterated/translated Latin
+    forms that go through the same-script path instead.
     """
     max_len = max(len(q), len(r))
     if max_len == 0:
         return 0.0
 
-    q_emb = _get_word_embedding(q)
-    r_emb = _get_word_embedding(r)
-    semantic_sim = float(np.dot(q_emb, r_emb))
-
     q_lat = _to_latin(q)
     r_lat = _to_latin(r)
 
     if _same_script(q, r):
+        q_emb = _get_word_embedding(q)
+        r_emb = _get_word_embedding(r)
+        semantic_sim = float(np.dot(q_emb, r_emb))
+
         edit_sim = 1.0 - levenshtein_distance(q, r) / max_len
         base = (
             EDIT_SEMANTIC_ALPHA * edit_sim
             + (1.0 - EDIT_SEMANTIC_ALPHA) * semantic_sim
         )
-        phonetic = _phonetic_sim(q_lat, r_lat)
-        return max(base, phonetic)
+        phonetic_boosted = _phonetic_boost(q_lat, r_lat, edit_sim)
+        return max(base, phonetic_boosted)
 
     lat_max_len = max(len(q_lat), len(r_lat), 1)
     edit_sim_lat = 1.0 - levenshtein_distance(q_lat, r_lat) / lat_max_len
-    combined = (
-        EDIT_SEMANTIC_ALPHA * edit_sim_lat
-        + (1.0 - EDIT_SEMANTIC_ALPHA) * semantic_sim
-    )
-    phonetic = _phonetic_sim(q_lat, r_lat)
-    return max(combined, semantic_sim, phonetic)
+    phonetic_boosted = _phonetic_boost(q_lat, r_lat, edit_sim_lat)
+    return max(edit_sim_lat, phonetic_boosted)
 
 
 def calculate_text_score(query_words: list[str], ocr_json: str) -> float:
