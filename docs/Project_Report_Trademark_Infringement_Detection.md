@@ -24,29 +24,36 @@
 10. [Conclusion](#10-conclusion)
 11. [References and Appendices](#11-references-and-appendices)
 
+**Figures:** 1 – System architecture | 1b – Fusion weight selection | 1c – Similarity-check sequence | 2 – Detection pipeline | 3 – Text score pipeline | 4 – 5-year roadmap timeline
+
 ---
 
 ## 1. Introduction
 
-This report documents a **Live Project** undertaken as part of the **AI Applied Project** course. The project addresses a real-world problem: government intellectual property (IP) management departments are facing a surge in trademark infringement litigations, partly driven by AI-powered tools that enable effortless image generation, content creation, and brand mimicry.
+This report documents a **Live Project** carried out under the **AI Applied Project** course. We tackle a real-world issue: IP offices are seeing a sharp rise in trademark infringement cases, partly because AI tools have made it easy to generate lookalike images and copy brand names.
 
 ### 1.1 Problem Statement
 
-The organization responsible for managing intellectual property rights needs an **AI-based detection system** capable of identifying infringement risks across diverse scenarios, including:
+IP bodies need a system that **can spot** infringement risks in a variety of situations:
 
-- Identical or similar names used in different languages (e.g. English and Hindi).
-- Replication of trademarked images with modified orientation or aspect ratios.
-- Use of synonyms or phonetically similar brand names.
-- Visual or verbal mimicry that may cause consumer confusion.
+- Same or similar names in different languages (e.g. English and Hindi).
+- Trademarked images that have been flipped, rotated, or resized.
+- Synonyms or names that sound alike (phonetic lookalikes).
+- Visual or verbal copycatting that could confuse consumers.
 
 ### 1.2 Objective
 
-To design and implement a **scalable, AI-enabled solution** that proactively detects potential trademark infringements, helping reduce litigation risk, enhance compliance, and protect the IP portfolio—while balancing innovation with legal and operational safeguards.
+We set out to build an **AI-backed solution** that can scale and that **detects possible infringements up front**—cutting litigation risk, improving compliance, and protecting the IP portfolio without blocking innovation or ignoring legal and operational constraints.
 
 ### 1.3 Scope
 
-- **In scope:** A detection framework that combines **image recognition** (computer vision) and **NLP** (multilingual text and semantic/phonetic matching) with a working prototype consisting of a backend API and a web-based interface. The solution uses **ML and AI wherever possible** across the pipeline.
-- **Out of scope:** Real-time video, generic scene understanding, and full-scale production deployment (addressed in the 5-year roadmap).
+- **In scope:** A detection framework that **combines** image recognition (computer vision) and NLP (multilingual text plus semantic and phonetic matching), with a working prototype: backend API and web UI. We use **ML and AI across the pipeline** wherever it fits.
+- **Out of scope:** Real-time video, general scene understanding, and full production rollout—those are covered in the 5-year roadmap.
+
+### 1.4 Dataset and Deployment Context
+
+- The prototype is **trained and indexed on 500 trademark images** supplied by the client. All similarity logic, weightages, and fusion are tuned to this set.
+- We run it on **limited hardware** (personal machines and free or cheap servers). Even so, **similarity-check latency matches or beats** the Singapore IPOS Similar Mark Search portal, so the design holds up and is ready to scale when proper infrastructure is available.
 
 ---
 
@@ -54,43 +61,45 @@ To design and implement a **scalable, AI-enabled solution** that proactively det
 
 ### 2.1 Problem in Hand
 
-Government IP departments face:
+IP departments are dealing with:
 
-- **Rising litigation:** A surge in trademark infringement cases linked to digital content and AI-generated or -assisted mimicry.
-- **Diverse infringement patterns:** Identical names in different languages, copied or rotated logos, phonetic and semantic variations, and combined visual/verbal mimicry.
-- **Need for proactive detection:** Moving from reactive enforcement to proactive risk detection across applications and digital channels.
+- **More litigation:** Infringement cases are up, tied to digital content and AI-assisted copying.
+- **Mixed types of infringement:** Same name in another language, copied or rotated logos, soundalike or synonym names, and combinations of visual and verbal mimicry.
+- **Pressure to detect early:** Moving from “react when someone complains” to spotting risk across applications and channels before it escalates.
 
 ### 2.2 Current Issues
 
-The status quo is characterised by:
+How things work today:
 
-- **Volume:** Large numbers of applications and digital assets make manual review unsustainable.
-- **Manual bottlenecks:** Examiners rely on keyword search and visual inspection, leading to delays and inconsistency.
-- **Lack of scalable similarity search:** Limited or no image-based similarity and cross-lingual text matching.
-- **Difficulty in cross-language and visual similarity:** Manual comparison of scripts (e.g. Devanagari vs Latin) and rotated or resized logos is time-consuming and error-prone.
+- **Volume:** Too many applications and assets for manual review to be feasible.
+- **Bottlenecks:** Examiners depend on keyword search and eyeballing logos, which slows things down and leads to uneven results.
+- **No real image similarity:** Little or no image-based similarity search or cross-lingual text matching.
+- **Cross-language and visual comparison is hard:** Comparing Devanagari with Latin, or catching rotated or resized logos, is slow and error-prone when done by hand.
 
 ### 2.3 Current Manual Process (Minimal / No Tech Enablement)
 
-In many government IP workflows today:
+In many IP offices today:
 
-- **Keyword and text search** are the primary tools; examiners type terms and review lists manually.
-- **Visual inspection** is done by eye—comparing logos and marks one by one.
-- **Filing-based workflows** dominate; each application is processed with limited linkage to a unified similarity engine.
-- **Image similarity tools** are often absent or rudimentary, so rotation, aspect ratio, and minor edits are hard to detect at scale.
+- **Keyword and text search** do most of the work; examiners type in terms and go through lists by hand.
+- **Visual check** is manual—logos and marks are compared one by one.
+- **Filing-centric workflows** mean each application is handled on its own, with weak links to any shared similarity engine.
+- **Image similarity** is missing or basic, so rotation, aspect changes, and small edits are hard to catch at scale.
 
-This leads to **high man hours per application**, inconsistent outcomes, and a higher risk of missed similarities or delayed detection of infringement.
+The result: **lots of hours per application**, inconsistent decisions, and a real chance of missing similarities or catching infringement too late.
 
 ### 2.4 Benchmark: Singapore IPOS Trademark Portal
 
-As a reference for tech-enabled similar-mark search in government IP, we use the **Singapore IPOS Trademark Portal**, in particular the **Similar Mark Search** service:
+We use the **Singapore IPOS Trademark Portal**—especially its **Similar Mark Search**—as a reference for what a tech-enabled, government similar-mark search can look like:
 
 - **Link:** [IPOS – Similar Mark Search](https://digitalhub.ipos.gov.sg/FAMN/eservice/IP4SG/MN_TmSimilarMarkSearch)
 
-Singapore’s portal provides a government-grade, self-service interface for searching similar marks. Our solution **compares and complements** this by:
+Singapore’s portal is a solid, self-service way to search similar marks. Our solution **sits alongside it** by:
 
-- Integrating **AI-driven image recognition** (e.g. DINOv2, VGG) and **NLP** (multilingual OCR, semantic and phonetic text similarity) into a single pipeline.
-- Supporting **multi-modal fusion** (visual + text + color + font + shape) and **Indian languages** (e.g. Hindi, Marathi) with transliteration and translation.
-- Offering a **working prototype** that can be extended toward a 5-year roadmap for full-scale implementation.
+- **Bringing together** AI-based image recognition (DINOv2, VGG) and NLP (multilingual OCR, semantic and phonetic text similarity) in one pipeline.
+- **Adding** multi-modal fusion (visual, text, color, font, shape) and **Indian languages** (Hindi, Marathi) with transliteration and translation.
+- **Delivering** a working prototype that can grow into the 5-year roadmap.
+
+**Performance:** We run on limited resources (personal machines and free-tier servers), but **similarity-response latency is on par with or better than** the Singapore portal. So the design is efficient enough to move to production once we have the right infrastructure.
 
 ---
 
@@ -98,7 +107,7 @@ Singapore’s portal provides a government-grade, self-service interface for sea
 
 ### 3.1 High-Level Architecture Integrating AI Components
 
-The system is built around a **backend API** that orchestrates **image recognition** (computer vision) and **NLP** (text extraction and similarity) and stores multi-modal embeddings in a **vector database**. The **frontend** provides the user interface; **Resend** is used for optional email notifications.
+At the centre we have a **backend API** that runs **image recognition** (computer vision) and **NLP** (text extraction and similarity) and writes multi-modal embeddings into a **vector database**. The **frontend** is the user interface; we use **Resend** for optional email notifications.
 
 **Figure 1** below shows the high-level system architecture. AI/ML components are explicitly grouped into **Image recognition** (DINO, VGG, shape, icon, pHash) and **NLP** (PaddleOCR, EasyOCR, sentence-transformers, text/phonetic matching).
 
@@ -147,11 +156,55 @@ flowchart LR
     API --> Resend
 ```
 
-### 3.2 Narrative: How Image Recognition and NLP Are Integrated
+### 3.2 How Image Recognition and NLP Fit Together
 
-- **Image recognition:** Incoming query images are preprocessed (background removal via U2-Net/rembg, padding, resize). DINOv2 and VGG16 produce visual embeddings; shape features (Hu moments, contour histograms) and perceptual hash (pHash) support rotation-invariant and near-duplicate detection. An **icon embedding** (logo with text regions masked) adds a symbol-focused signal. Test-time augmentation (TTA) with rotations improves robustness.
-- **NLP:** Multilingual OCR (PaddleOCR and EasyOCR) extracts text from the same image (and variants). Devanagari is transliterated to Latin and optionally translated to English. Sentence-transformers provide semantic embeddings; phonetic algorithms (Soundex, Metaphone) and edit distance support brand-name and phonetic similarity. Stop-word filtering and brand-match overrides reduce noise and boost true brand matches.
-- **Multi-index retrieval and fusion:** The backend runs **parallel searches** on Milvus (DINO, VGG, text, color) and merges candidates. Per-candidate scores for text, color, font, and shape are computed; **adaptive weights** (depending on whether query and candidate have text) and **Reciprocal Rank Fusion (RRF)** with z-score normalization produce a single ranking. pHash near-duplicates and strong text matches receive short-circuit or override treatment.
+- **Image side:** Query images go through preprocessing (background removal with U2-Net/rembg, padding, resize). DINOv2 and VGG16 give us visual embeddings; we also use shape (Hu moments, contour histograms) and perceptual hash (pHash) for rotation-invariant and near-duplicate detection. An **icon embedding** (logo with text areas masked) adds a symbol-only signal. We use test-time augmentation (TTA) with rotations to improve robustness.
+- **Text side:** Multilingual OCR (PaddleOCR and EasyOCR) pulls text from the image and its variants. Devanagari is transliterated to Latin and, when needed, translated to English. Sentence-transformers give semantic embeddings; we use Soundex, Metaphone, and edit distance for brand-name and phonetic similarity. Stop-word filtering and brand-match overrides cut noise and push real brand matches up.
+- **Retrieval and fusion:** The backend **queries Milvus in parallel** (DINO, VGG, text, color) and merges candidate sets. We score each candidate on text, color, font, and shape, then apply **adaptive weights** (based on whether query and candidate have text) and **Reciprocal Rank Fusion (RRF)** with z-score normalization to get one ranking. pHash near-duplicates and strong text matches get short-circuit or override treatment.
+
+**Figure 1b – How we pick fusion weights**
+
+We choose one of three weight profiles depending on whether the query and the candidate image contain text. The flowchart below captures that logic.
+
+```mermaid
+flowchart TD
+    Start[Query + Candidate] --> Q{Does query\nhave text?}
+    Q -->|Yes| C1{Candidate has text?}
+    Q -->|No| C2{Candidate has text?}
+    C1 -->|Yes| Both[Use WEIGHTS_BOTH_TEXT\nDINO 0.20, Text 0.25\nFont 0.20, Shape 0.20, ...]
+    C1 -->|No| One[Use WEIGHTS_ONE_TEXT\nDINO 0.25, Text 0.15\nShape 0.25, ...]
+    C2 -->|Yes| One
+    C2 -->|No| None[Use WEIGHTS_NO_TEXT\nDINO 0.35, Shape 0.35\nText 0, Font 0]
+    Both --> Fusion[Z-score + RRF → final rank]
+    One --> Fusion
+    None --> Fusion
+```
+
+**Figure 1c – End-to-end request flow (similarity check)**
+
+From the moment a user uploads an image to the moment they see ranked results, the following path is taken.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant API as Backend API
+    participant ML as ML Pipelines
+    participant DB as Milvus
+
+    U->>F: Upload logo image
+    F->>API: POST /similarity-check (image)
+    API->>ML: Preprocess + extract features
+    ML->>ML: OCR, DINO, VGG, color, shape, font, pHash
+    API->>DB: Query DINO, VGG, text, color indices
+    DB->>API: Candidate IDs
+    API->>DB: Load full records for candidates
+    API->>ML: Score each candidate (TTA, text, color, font, shape)
+    ML->>API: Per-modality scores
+    API->>API: Fusion (adaptive weights + RRF)
+    API->>F: Top-K results + scores
+    F->>U: Display results table
+```
 
 ---
 
@@ -159,16 +212,16 @@ flowchart LR
 
 ### 4.1 Detection Logic
 
-The similarity-check pipeline is as follows:
+What happens when you run a similarity check:
 
-1. **Upload query image** to the API.
-2. **Preprocess:** Background removal (rembg), pad to square, resize (e.g. 224×224).
-3. **Extract features:** OCR (parallel Paddle + Easy), visual embeddings (DINO, VGG) for main and icon images, color histogram and palette, shape (Hu, contour histogram), font embedding (DINO on text crops), pHash.
-4. **Multi-index search:** Query DINO, VGG, text, and color indices in Milvus (in parallel); merge candidate IDs.
-5. **Merge candidates** and load full records from Milvus.
-6. **Score each candidate:** DINO and VGG with TTA (max over variants), icon similarity, text score (hybrid word similarity), color (EMD on palette), font (cosine), shape (cosine on Hu). Apply pHash boost where applicable.
-7. **Fusion and re-rank:** Adaptive weights, z-score normalization, RRF; apply perfect-text and soft-text overrides; sort by final score.
-8. **Return top-K results** (e.g. top 20) with per-modality scores.
+1. **Upload** the query image to the API.
+2. **Preprocess:** Remove background (rembg), pad to square, resize (e.g. 224×224).
+3. **Extract features:** OCR (Paddle + Easy in parallel), visual embeddings (DINO, VGG) for the full image and the icon crop, color palette, shape (Hu, contour histogram), font embedding (DINO on text crops), pHash.
+4. **Search:** Hit DINO, VGG, text, and color indices in Milvus in parallel and merge the candidate IDs.
+5. **Load** full records for those candidates from Milvus.
+6. **Score each candidate:** DINO and VGG with TTA (take max over variants), icon similarity, text score (hybrid word similarity), color (EMD on palette), font (cosine), shape (cosine on Hu). Add pHash boost when it applies.
+7. **Fusion and re-rank:** Apply adaptive weights, z-score normalization, and RRF; apply perfect-text and soft-text overrides; sort by final score.
+8. **Return** top-K (e.g. top 20) with per-modality scores.
 
 **Figure 2** illustrates this flow.
 
@@ -185,11 +238,11 @@ flowchart TB
 
 ### 4.2 Interface
 
-- **Frontend:** The [trademark-ing](https://github.com/shlsheth263/trademark-ing) repository provides a Lovable-built web app (React, Vite, TypeScript, shadcn-ui, Tailwind). Users can upload a logo image, optionally enter text, run a similarity check, and view a results table with thumbnail, trademark ID, final score, and per-modality scores (DINO, VGG, text, color, font, shape).
-- **Backend API endpoints:**
+- **Frontend:** The [trademark-ing](https://github.com/shlsheth263/trademark-ing) repo hosts a Lovable-built web app (React, Vite, TypeScript, shadcn-ui, Tailwind). Users upload a logo, optionally enter text, run a similarity check, and get a results table with thumbnail, trademark ID, final score, and per-modality scores (DINO, VGG, text, color, font, shape).
+- **Backend API:**
   - `GET /` — Health check.
-  - `POST /similarity-check` — Upload image; returns query OCR, top-K similar trademarks with scores.
-  - `POST /submit-logo` — Upload image; indexes it into the Milvus repository.
+  - `POST /similarity-check` — Upload image; get query OCR and top-K similar trademarks with scores.
+  - `POST /submit-logo` — Upload image; we index it into Milvus.
   - `POST /send-email` — Send an HTML email (receiver, subject, body) via Resend.
 
 *[Insert screenshot of UI here: upload screen and results table.]*  
@@ -227,9 +280,9 @@ The frontend is hosted in the public repository [shlsheth263/trademark-ing](http
 - **Configuration:** Sensitive configuration (e.g. `RESEND_API_KEY`) is supplied via environment variables; no secrets in code.
 - **Optional:** Backend can be deployed on cloud (e.g. AWS EC2); Milvus DB file is persisted on a volume or host path.
 
-### 5.5 ML and AI Components Used (Where We Use ML/AI)
+### 5.5 Where We Use ML and AI
 
-The following list showcases **every place ML and AI are applied** in the solution:
+Below is **every place** we use ML/AI in the solution:
 
 | Area | Component | Role |
 |------|-----------|------|
@@ -249,16 +302,74 @@ The following list showcases **every place ML and AI are applied** in the soluti
 | | Adaptive weighting | Different weight profiles when both have text, one has text, or neither. |
 | | Brand-match overrides | Perfect text match → 100% final; soft text override when text ≥ 0.85. |
 | | pHash short-circuit | Near-duplicate detection bypasses full scoring when pHash very high. |
-| **Supporting methods (alongside AI)** | K-means | Color palette extraction in CIELAB. |
+| **Supporting (non-AI)** | K-means | Color palette in CIELAB. |
 | | Earth Mover’s Distance | Perceptual color similarity between palettes. |
-| | Hu moments + contour histograms | Shape descriptors supporting retrieval. |
-| | Perceptual hashing (pHash) | Fast near-duplicate detection. |
+| | Hu moments + contour histograms | Shape descriptors for retrieval. |
+| | Perceptual hashing (pHash) | Fast near-duplicate check. |
 
 ---
 
 ## 6. Results and Demo
 
-### 6.1 Modalities and API Endpoints (Tables)
+### 6.1 Scores Computed per Image and Weightages
+
+For every query–candidate pair we compute **six modality scores** and combine them into one final score. The **weights we use are adaptive**: they change depending on whether the query and the candidate both have text, only one has text, or neither.
+
+**Six modality scores and fusion weightages**
+
+| # | Score | How it is computed | Weight (both have text) | Weight (one has text) | Weight (neither has text) |
+|---|--------|---------------------|--------------------------|------------------------|----------------------------|
+| 1 | **DINO** | DINOv2 embedding; max cosine over TTA (0°, 180°); boosted by icon similarity when applicable. | 0.20 | 0.25 | 0.35 |
+| 2 | **VGG** | VGG16 embedding; max cosine over TTA. | 0.05 | 0.10 | 0.10 |
+| 3 | **Text** | See below (translation, transliteration, phonetic, semantic, edit, stop words, brand boost). | 0.25 | 0.15 | 0.00 |
+| 4 | **Color** | Earth Mover’s Distance on CIELAB palettes (5 colours); score = 1 − EMD/τ. | 0.10 | 0.15 | 0.20 |
+| 5 | **Font** | DINOv2 on cropped text regions; cosine similarity. | 0.20 | 0.10 | 0.00 |
+| 6 | **Shape** | Hu moments (7-dim) cosine similarity. | 0.20 | 0.25 | 0.35 |
+
+**How the text score (single 0–1 value) is built**
+
+- **OCR:** Multilingual OCR (PaddleOCR, EasyOCR) on query and stored image.
+- **Transliteration:** Devanagari and other Indic scripts → Latin (e.g. IAST) for cross-script comparison.
+- **Translation:** Hindi/Marathi → English (Google Translate API) for semantic alignment.
+- **Per-word similarity:** For each (query word, repository word) pair we use:
+  - **Edit distance** (Levenshtein); **semantic similarity** (sentence-transformer; weight 0.6 same-script, not used cross-script to avoid inflated scores); **phonetic similarity** (Soundex/Metaphone via jellyfish) applied as a **bounded boost** (+0.10 for Soundex, +0.15 for Metaphone) on top of edit similarity so that **phonetic has lower overall weight** and does not cause false matches (e.g. “taste” vs “dost”).
+- **Stop-word filtering:** Common words (e.g. “the”, “of”, “ltd”, “pvt”, “ka”, “ki”) and very short tokens are excluded.
+- **Brand name match boost:** If any non–stop-word pair has similarity ≥ 0.95, the overall text score is floored at 0.9.
+- **Aggregation:** Symmetric mean (0.5× query→repo + 0.5× repo→query) over best-match scores.
+
+**Fusion:** The six scores are z-score normalised, then combined using the **adaptive weights** above and **Reciprocal Rank Fusion (RRF)** with λ = 0.5 (blend of RRF and weighted z-scores). **pHash** and **icon** act as boosts: pHash near-duplicate can short-circuit to a very high final score; icon similarity can boost the DINO score.
+
+**Figure 3 – Text score pipeline (how we get one 0–1 text score per pair)**
+
+The single “text” score that goes into the fusion is built along the following pipeline.
+
+```mermaid
+flowchart LR
+    subgraph Input
+        Q[Query image] 
+        R[Repository image]
+    end
+    subgraph OCR
+        Q --> O1[PaddleOCR + EasyOCR]
+        R --> O2[PaddleOCR + EasyOCR]
+    end
+    subgraph Normalise
+        O1 --> T1[Transliterate Devanagari→Latin]
+        O2 --> T2[Transliterate]
+        T1 --> Tr1[Translate HI/MR→EN if needed]
+        T2 --> Tr2[Translate]
+    end
+    subgraph Match
+        Tr1 --> W[Per-word similarity:\nedit + semantic + phonetic boost]
+        Tr2 --> W
+        W --> Stop[Drop stop words\nltd, pvt, ka, ki...]
+        Stop --> Brand[Brand boost if any pair ≥ 0.95]
+        Brand --> Sym[Symmetric mean\nquery→repo & repo→query]
+    end
+    Sym --> Out[Single text score 0–1]
+```
+
+### 6.2 Modalities and API Endpoints (Tables)
 
 **Table: Modalities and AI/ML type**
 
@@ -283,11 +394,11 @@ The following list showcases **every place ML and AI are applied** in the soluti
 | POST | `/submit-logo` | Upload image; index into repository |
 | POST | `/send-email` | Send HTML email via Resend |
 
-### 6.2 Example Use Case
+### 6.3 Example Use Case
 
-- **Query:** A logo image containing “Amul” in Hindi (Devanagari) and “Bharat ka Swaad.”
-- **Expected:** The English “Amul” logo (same brand) should appear in the top results with high text and visual scores.
-- **Mechanism:** OCR extracts and transliterates/translates text; “amul” is matched across scripts; brand-match and soft-text overrides boost the score; DINO/VGG and icon similarity add visual evidence.
+- **Query:** A logo with “Amul” in Hindi (Devanagari) and “Bharat ka Swaad.”
+- **What we want:** The English “Amul” logo (same brand) shows up in the top results with high text and visual scores.
+- **How we get there:** OCR pulls and transliterates/translates the text; we match “amul” across scripts; brand-match and soft-text overrides push the score up; DINO/VGG and icon similarity add the visual side.
 
 *[Insert screenshot of results table for this or another example.]*
 
@@ -297,6 +408,29 @@ The following list showcases **every place ML and AI are applied** in the soluti
 
 ### 7.1 Five-Year Roadmap for Full-Scale Implementation
 
+**Figure 4 – Roadmap timeline**
+
+```mermaid
+gantt
+    title 5-Year Implementation Roadmap
+    dateFormat YYYY
+    section Year 1
+    Pilot deployment, one office/class     :y1a, 2026, 1y
+    Feedback and weight tuning             :y1b, 2026, 1y
+    section Year 2
+    Expand repository and examiner onboarding :y2a, 2027, 1y
+    User directory integration            :y2b, 2027, 1y
+    section Year 3
+    Filing and examination workflow integration :y3, 2028, 1y
+    Audit logging and compliance           :y3b, 2028, 1y
+    section Year 4
+    More Indian languages and scripts     :y4a, 2029, 1y
+    Opposition/dispute support module     :y4b, 2029, 1y
+    section Year 5
+    Dashboards and similarity analytics    :y5a, 2030, 1y
+    Policy and risk assessment inputs      :y5b, 2030, 1y
+```
+
 | Phase | Timeline | Milestones |
 |-------|----------|------------|
 | **Year 1** | Pilot | Deploy prototype in one office or for one trademark class; collect feedback; tune thresholds and weights. |
@@ -305,12 +439,12 @@ The following list showcases **every place ML and AI are applied** in the soluti
 | **Year 4** | Languages and dispute support | Add more Indian languages and scripts; optional module for opposition/dispute support. |
 | **Year 5** | Analytics and policy | Dashboards and analytics on similarity trends; input to policy and risk assessment. |
 
-### 7.2 Cost–Benefit Analysis
+### 7.2 Cost–Benefit
 
-- **Costs:** Development (sunk for the prototype); ongoing: infrastructure (servers/cloud), support and maintenance, training, Resend or email service; optional: domain verification and dedicated sender for email.
-- **Benefits:** Reduced man hours per application (examiners get a ranked shortlist instead of blind search); faster examination; fewer missed similarities; more consistent decisions; audit trail of similarity scores and modalities.
+- **Costs:** Development is sunk for the prototype; going forward: infrastructure (servers/cloud), support, maintenance, training, and an email service (e.g. Resend). Optionally, domain verification and a dedicated sender.
+- **Benefits:** Fewer hours per application (examiners get a ranked shortlist instead of blind search), faster examination, fewer missed similarities, more consistent decisions, and an audit trail of scores and modalities.
 
-*If data is available, add rough quantitative estimates (e.g. hours saved per 1,000 applications).*
+*If you have numbers, add rough estimates (e.g. hours saved per 1,000 applications).*
 
 ### 7.3 Risk Mitigation Strategy
 
@@ -326,24 +460,24 @@ The following list showcases **every place ML and AI are applied** in the soluti
 
 ## 8. Governance and Project Management
 
-- **Milestones:** Project followed a phased approach: requirements and BRD, architecture and design, backend implementation (engine, text, color, shape, fusion), API and indexing, frontend integration, email and deployment.
-- **Stakeholder communication:** Regular alignment with course and project expectations; use of version control (Git/GitHub) and documentation (BRD, report).
-- **Version control:** Backend and frontend in separate repositories; dependencies and deployment captured in requirements.txt and Dockerfile.
+- **Milestones:** We worked in phases: requirements and BRD, then architecture and design, then backend (engine, text, color, shape, fusion), API and indexing, frontend integration, and finally email and deployment.
+- **Stakeholders:** We stayed aligned with course and project expectations and kept everything in version control (Git/GitHub) with a BRD and this report.
+- **Repos:** Backend and frontend live in separate repos; requirements.txt and the Dockerfile capture dependencies and how to run the app.
 
 ---
 
 ## 9. Limitations and Future Work
 
-- **Email:** Production email depends on Resend (or similar) and domain verification; default sender (e.g. onboarding@resend.dev) is for testing only.
-- **Languages:** Current focus is English, Hindi, and Marathi; extension to more scripts and languages is planned in the roadmap.
-- **Explainability:** Scores are interpretable per modality, but no formal explainability (e.g. saliency maps) is implemented yet.
-- **Scale:** Milvus Lite is file-based; very large portfolios may require Milvus cluster or another vector DB for distributed search.
+- **Email:** For production we need Resend (or similar) and domain verification; the default sender (e.g. onboarding@resend.dev) is for testing only.
+- **Languages:** We focus on English, Hindi, and Marathi for now; the roadmap includes more scripts and languages.
+- **Explainability:** You can read scores per modality, but we don’t yet have formal explainability (e.g. saliency maps).
+- **Scale:** Milvus Lite is file-based; for very large portfolios we’d move to a Milvus cluster or another vector DB.
 
 ---
 
 ## 10. Conclusion
 
-This report described the **problem in hand** (surge in trademark infringement, need for AI-based detection), the **current manual process** (minimal tech, high man hours), and the **benchmark** (Singapore IPOS Similar Mark Search). It presented a **high-level solution architecture** that integrates **image recognition** (DINO, VGG, shape, icon, pHash) and **NLP** (OCR, transliteration, translation, semantic and phonetic matching), and documented a **working prototype** (detection logic and interface) built with **ML and AI throughout**. A **5-year roadmap** and **business case** (cost–benefit and risk mitigation) were outlined for full-scale implementation. The project demonstrates the use of ML and AI in an **AI Applied Project** Live Project context.
+We described the **problem** (rise in trademark infringement and the need for AI-based detection), the **current manual process** (little tech, lots of man hours), and the **benchmark** (Singapore IPOS Similar Mark Search). We then laid out a **solution architecture** that **brings together** image recognition (DINO, VGG, shape, icon, pHash) and NLP (OCR, transliteration, translation, semantic and phonetic matching), and we documented a **working prototype**—detection logic and UI—that uses **ML and AI across the pipeline**. The **5-year roadmap** and **business case** (cost–benefit and risk mitigation) spell out how to take this to full-scale. The work fits the **AI Applied Project** Live Project: ML and AI are used in a real client setting.
 
 ---
 
