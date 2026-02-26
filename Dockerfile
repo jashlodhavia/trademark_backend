@@ -5,6 +5,9 @@ FROM python:3.10-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# Replace with your actual Resend API key on the server
+ENV RESEND_API_KEY=dummy_replace_me
+
 WORKDIR /app
 
 # ---------------- System Dependencies ----------------

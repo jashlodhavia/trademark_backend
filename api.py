@@ -393,7 +393,7 @@ async def similarity_check(file: UploadFile = File(...)):
 # ── email (Resend API) ────────────────────────────────────────────────────
 
 SENDER_EMAIL = "onboarding@resend.dev"
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "re_b8SV44CR_Q4Z5eXXMiVFN886m9GRzEq4d")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 
 
 class EmailRequest(BaseModel):
@@ -406,6 +406,8 @@ class EmailRequest(BaseModel):
 async def send_email(req: EmailRequest):
     if "@" not in req.receiver_email:
         raise HTTPException(status_code=400, detail="Invalid email address")
+    if not RESEND_API_KEY:
+        raise HTTPException(status_code=503, detail="RESEND_API_KEY is not configured")
 
     try:
         resp = http_requests.post(
