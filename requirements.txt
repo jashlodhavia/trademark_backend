@@ -25,3 +25,4 @@ indic-transliteration>=2.3.0
 deep-translator>=1.11.0
 jellyfish>=1.0.0
 imagehash>=4.3.0
+pydantic[email]>=2.0

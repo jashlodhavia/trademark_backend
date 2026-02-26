@@ -7,16 +7,19 @@ Endpoints:
   GET  /                  – health check
   POST /submit-logo       – index a new logo
   POST /similarity-check  – multi-index retrieval + 9-modality re-ranking
+  POST /send-email         – send an HTML email via direct MX delivery
 """
 
 import os
 import json
 import uuid
 import shutil
+import requests as http_requests
 import numpy as np
 import imagehash
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image
+from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pymilvus import Collection
@@ -385,3 +388,52 @@ async def similarity_check(file: UploadFile = File(...)):
     except Exception as e:
         print("Error in similarity check:", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── email (Resend API) ────────────────────────────────────────────────────
+
+SENDER_EMAIL = "onboarding@resend.dev"
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "re_b8SV44CR_Q4Z5eXXMiVFN886m9GRzEq4d")
+
+
+class EmailRequest(BaseModel):
+    receiver_email: str
+    subject: str
+    body: str
+
+
+@app.post("/send-email")
+async def send_email(req: EmailRequest):
+    if "@" not in req.receiver_email:
+        raise HTTPException(status_code=400, detail="Invalid email address")
+
+    try:
+        resp = http_requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": SENDER_EMAIL,
+                "to": [req.receiver_email],
+                "subject": req.subject,
+                "html": req.body,
+            },
+            timeout=15,
+        )
+
+        if resp.status_code in (200, 201):
+            return {
+                "status": "sent",
+                "receiver": req.receiver_email,
+                "subject": req.subject,
+            }
+
+        detail = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else resp.text
+        raise HTTPException(status_code=resp.status_code, detail=detail)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Email sending failed: {str(e)}")
