@@ -30,7 +30,9 @@
 
 ## 1. Introduction
 
-This report documents a **Live Project** carried out under the **AI Applied Project** course. We tackle a real-world issue: IP offices are seeing a sharp rise in trademark infringement cases, partly because AI tools have made it easy to generate lookalike images and copy brand names.
+This report documents a **Live Project** delivered as part of the **AI Applied Project** course. The work addresses a real-world need: government bodies that manage intellectual property (IP) are facing a sharp rise in trademark infringement cases. One driver is the widespread use of AI-powered tools that make it easy to generate lookalike logos, copy brand names across languages, and create content that blurs the line between inspiration and infringement. Manual checks no longer scale, and outcomes vary too much across examiners and offices.
+
+Our goal was to design and build an **AI-driven trademark infringement detection framework** that combines **computer vision** (logo and image similarity) with **natural language processing** (multilingual text extraction, transliteration, translation, and semantic and phonetic matching). The deliverable is a **working prototype**: a backend API and a web interface that let users upload a logo or trademark image and receive a ranked list of similar marks from a repository, with per-modality scores and a single fused similarity score. The system is currently trained and indexed on **500 trademark images** provided by the client, and its similarity-check latency is **comparable to or better than** the Singapore IPOS Similar Mark Search portal despite running on limited resources (personal devices and free-tier servers). This report describes the problem in hand, the current manual process and benchmark, the solution architecture and detection logic, the implementation and where ML/AI are used, results and score weightages, and a 5-year roadmap for full-scale deployment.
 
 ### 1.1 Problem Statement
 

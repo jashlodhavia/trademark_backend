@@ -1,0 +1,42 @@
+flowchart LR
+    subgraph UserLayer[User]
+        User[User]
+    end
+
+    subgraph FrontendLayer[Frontend]
+        Frontend[Lovable App\nReact, Vite, TypeScript\nshadcn-ui, Tailwind]
+    end
+
+    subgraph BackendLayer[Backend API]
+        API[FastAPI\nsimilarity-check\nsubmit-logo\nsend-email]
+    end
+
+    subgraph DataLayer[Data]
+        Milvus[(Milvus\nVector DB)]
+    end
+
+    subgraph MLPipeline[ML and OCR Pipelines]
+        subgraph ImageRec[Image recognition]
+            DINO[DINOv2]
+            VGG[VGG16]
+            Shape[Shape / Hu]
+            Icon[Icon emb]
+            Phash[pHash]
+        end
+        subgraph NLP[NLP]
+            Paddle[PaddleOCR]
+            Easy[EasyOCR]
+            ST[sentence-transformers]
+            TextMatch[Text / phonetic\nmatching]
+        end
+    end
+
+    subgraph External[External]
+        Resend[Resend\nEmail API]
+    end
+
+    User <--> Frontend
+    Frontend <--> API
+    API <--> Milvus
+    API <--> MLPipeline
+    API --> Resend

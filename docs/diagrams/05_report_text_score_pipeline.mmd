@@ -1,0 +1,23 @@
+flowchart LR
+    subgraph Input
+        Q[Query image]
+        R[Repository image]
+    end
+    subgraph OCR
+        Q --> O1[PaddleOCR + EasyOCR]
+        R --> O2[PaddleOCR + EasyOCR]
+    end
+    subgraph Normalise
+        O1 --> T1[Transliterate Devanagari→Latin]
+        O2 --> T2[Transliterate]
+        T1 --> Tr1[Translate HI/MR→EN if needed]
+        T2 --> Tr2[Translate]
+    end
+    subgraph Match
+        Tr1 --> W[Per-word similarity:\nedit + semantic + phonetic boost]
+        Tr2 --> W
+        W --> Stop[Drop stop words\nltd, pvt, ka, ki...]
+        Stop --> Brand[Brand boost if any pair ≥ 0.95]
+        Brand --> Sym[Symmetric mean\nquery→repo & repo→query]
+    end
+    Sym --> Out[Single text score 0–1]

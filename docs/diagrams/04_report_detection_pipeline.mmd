@@ -1,0 +1,8 @@
+flowchart TB
+    A[Upload query image] --> B[Preprocess\nrembg, pad, resize]
+    B --> C[Extract features\nOCR, DINO, VGG, color\nshape, font, icon, pHash]
+    C --> D[Multi-index search\nDINO, VGG, text, color]
+    D --> E[Merge candidates]
+    E --> F[Score per candidate\ntext, color, font, shape\npHash, TTA]
+    F --> G[Fusion and re-rank\nadaptive weights, RRF\noverrides]
+    G --> H[Top-K results]

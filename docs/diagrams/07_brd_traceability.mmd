@@ -1,0 +1,19 @@
+flowchart LR
+    subgraph Needs
+        N1[Same name, different lang]
+        N2[Rotated/resized logos]
+        N3[Phonetic / synonym names]
+        N4[Visual or verbal mimicry]
+    end
+    subgraph FR
+        N1 --> FR1[FR-1: Multilingual text]
+        N2 --> FR2[FR-2: Rotation-invariant visual]
+        N3 --> FR3[FR-3: Phonetic + semantic text]
+        N4 --> FR4[FR-4: Multi-modal fusion]
+    end
+    subgraph Components
+        FR1 --> T[text_engine, api]
+        FR2 --> E[engine, preprocessing]
+        FR3 --> T
+        FR4 --> F[fusion, api]
+    end

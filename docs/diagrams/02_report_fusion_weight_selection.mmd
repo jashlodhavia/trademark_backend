@@ -1,0 +1,11 @@
+flowchart TD
+    Start[Query + Candidate] --> Q{Does query\nhave text?}
+    Q -->|Yes| C1{Candidate has text?}
+    Q -->|No| C2{Candidate has text?}
+    C1 -->|Yes| Both[Use WEIGHTS_BOTH_TEXT\nDINO 0.20, Text 0.25\nFont 0.20, Shape 0.20, ...]
+    C1 -->|No| One[Use WEIGHTS_ONE_TEXT\nDINO 0.25, Text 0.15\nShape 0.25, ...]
+    C2 -->|Yes| One
+    C2 -->|No| None[Use WEIGHTS_NO_TEXT\nDINO 0.35, Shape 0.35\nText 0, Font 0]
+    Both --> Fusion[Z-score + RRF → final rank]
+    One --> Fusion
+    None --> Fusion

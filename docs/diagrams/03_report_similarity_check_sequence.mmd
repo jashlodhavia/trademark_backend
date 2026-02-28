@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant API as Backend API
+    participant ML as ML Pipelines
+    participant DB as Milvus
+
+    U->>F: Upload logo image
+    F->>API: POST /similarity-check (image)
+    API->>ML: Preprocess + extract features
+    ML->>ML: OCR, DINO, VGG, color, shape, font, pHash
+    API->>DB: Query DINO, VGG, text, color indices
+    DB->>API: Candidate IDs
+    API->>DB: Load full records for candidates
+    API->>ML: Score each candidate (TTA, text, color, font, shape)
+    ML->>API: Per-modality scores
+    API->>API: Fusion (adaptive weights + RRF)
+    API->>F: Top-K results + scores
+    F->>U: Display results table
